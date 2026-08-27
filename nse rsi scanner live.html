@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NSE Multi-Timeframe RSI Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0F1A; --surface:#111A29; --surface-2:#16202F; --line:#243248;
+    --text:#EAF0FA; --muted:#8C99B4; --gold:#D8A54A; --gold-dim:#8A6E33;
+    --mint:#3FBF8F; --mint-dim:#1E3A30; --amber:#E2853D; --amber-dim:#3A2A18;
+    --rose:#D9636B; --blue-cool:#4C7EA6;
+    --font-display:'Space Grotesk',system-ui,sans-serif;
+    --font-body:'Inter',system-ui,-apple-system,sans-serif;
+    --font-mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{overflow-x:hidden;}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 var(--font-body);overflow-x:hidden;}
+  ::selection{background:var(--gold-dim);color:var(--text);}
+  a,button,input{font-family:inherit;}
+  :focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+
+  /* ---------- ticker ---------- */
+  .ticker-wrap{
+    background:var(--surface-2); border-bottom:1px solid var(--line);
+    overflow:hidden; white-space:nowrap; position:relative;
+  }
+  .ticker-wrap::before,.ticker-wrap::after{
+    content:''; position:absolute; top:0; bottom:0; width:48px; z-index:2; pointer-events:none;
+  }
+  .ticker-wrap::before{left:0; background:linear-gradient(90deg,var(--surface-2),transparent);}
+  .ticker-wrap::after{right:0; background:linear-gradient(270deg,var(--surface-2),transparent);}
+  .ticker{
+    display:inline-flex; gap:36px; padding:9px 0; will-change:transform;
+    animation:scrollTicker 38s linear infinite;
+  }
+  .ticker span.item{
+    display:inline-flex; align-items:baseline; gap:8px; font-family:var(--font-mono);
+    font-size:.8rem; color:var(--muted); letter-spacing:.02em;
+  }
+  .ticker .sym{color:var(--text); font-weight:600;}
+  .ticker .dot{width:6px;height:6px;border-radius:50%;display:inline-block;background:var(--muted);}
+  .ticker .dot.gfs{background:var(--mint);} .ticker .dot.agfs{background:var(--amber);}
+  @keyframes scrollTicker{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+  @media (prefers-reduced-motion:reduce){.ticker{animation:none;}}
+
+  main{max-width:1180px;margin:auto;padding:0 20px 56px;}
+
+  .hero{padding:40px 0 28px;}
+  .eyebrow{
+    font-family:var(--font-mono); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--gold); margin:0 0 12px;
+  }
+  h1{
+    font-family:var(--font-display); font-weight:700; margin:0 0 10px;
+    font-size:clamp(1.7rem,4vw,2.6rem); letter-spacing:-.01em;
+  }
+  .lead{color:var(--muted); margin:0; max-width:56ch;}
+
+  .panel{
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:22px; margin:18px 0;
+  }
+  .panel h2{
+    font-family:var(--font-display); font-size:.95rem; font-weight:600; margin:0 0 16px;
+    color:var(--text);
+  }
+
+  /* ---------- live status bar ---------- */
+  .live-row{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px;
+  }
+  .live-dot{
+    width:9px; height:9px; border-radius:50%; background:var(--muted); flex:none;
+    box-shadow:0 0 0 0 rgba(63,191,143,.5);
+  }
+  .live-dot.on{ background:var(--mint); animation:pulse 2s ease-out infinite; }
+  .live-dot.stale{ background:var(--amber); }
+  .live-dot.error{ background:var(--rose); }
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(63,191,143,.45);}
+    70%{box-shadow:0 0 0 7px rgba(63,191,143,0);}
+    100%{box-shadow:0 0 0 0 rgba(63,191,143,0);}
+  }
+  #liveText{font-size:.85rem; color:var(--muted);}
+  #liveText strong{color:var(--text);}
+  .live-actions{display:flex; gap:8px; margin-left:auto; flex-wrap:wrap;}
+
+  .url-row{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px;}
+  input[type=url]{
+    flex:1; min-width:220px; padding:9px 10px; border:1px solid var(--line); border-radius:7px;
+    background:var(--surface-2); color:var(--text); font-family:var(--font-mono); font-size:.85rem;
+  }
+
+  .file-row{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:20px;}
+  input[type=file]{
+    color:var(--muted); font-size:.85rem; max-width:220px; min-width:0;
+  }
+  input[type=file]::file-selector-button{
+    background:var(--surface-2); color:var(--text); border:1px solid var(--line);
+    border-radius:7px; padding:8px 12px; font:600 .82rem var(--font-body); cursor:pointer; margin-right:10px;
+  }
+  button{
+    padding:10px 16px; border:1px solid transparent; border-radius:8px;
+    background:var(--gold); color:#1a1204; cursor:pointer; font:600 .86rem var(--font-body);
+    transition:transform .12s ease, box-shadow .12s ease;
+  }
+  button:hover{transform:translateY(-1px);}
+  button.secondary{background:transparent; color:var(--gold); border-color:var(--gold-dim);}
+  button:disabled{opacity:.5; cursor:default; transform:none;}
+  #fileStatus{color:var(--muted); font-size:.85rem;}
+  #fileStatus code{
+    background:var(--surface-2); padding:1px 6px; border-radius:4px; font-family:var(--font-mono); font-size:.8rem;
+  }
+
+  .controls{display:grid; grid-template-columns:repeat(4,minmax(140px,1fr)); gap:16px;}
+  label{display:grid; gap:7px; color:var(--muted); font-size:.8rem;}
+  .range-pair{display:flex; gap:8px;}
+  input[type=number]{
+    width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:7px;
+    background:var(--surface-2); color:var(--text); font-family:var(--font-mono); font-size:.9rem;
+  }
+  .zone-swatch{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px; vertical-align:1px;}
+  .zone-swatch.gfs{background:var(--mint);} .zone-swatch.agfs{background:var(--amber);}
+
+  .metrics{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:20px 0;}
+  .metric{
+    background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px 18px;
+  }
+  .metric span{display:block; color:var(--muted); font-size:.78rem; text-transform:uppercase; letter-spacing:.06em;}
+  .metric strong{
+    display:block; font-family:var(--font-mono); font-size:1.6rem; margin-top:6px; font-weight:600;
+  }
+  .metric.gfs strong{color:var(--mint);} .metric.agfs strong{color:var(--amber);}
+
+  .tabs{display:flex; gap:4px; margin-top:8px;}
+  .tab{
+    background:transparent; color:var(--muted); border:1px solid transparent; border-bottom:none;
+    padding:11px 16px; border-radius:9px 9px 0 0; font-weight:600; font-size:.85rem;
+  }
+  .tab .count{font-family:var(--font-mono); color:var(--muted); margin-left:6px;}
+  .tab.active{background:var(--surface); color:var(--text); border-color:var(--line);}
+  .tab.active .count{color:var(--gold);}
+
+  .results{border-radius:0 14px 14px 14px; margin-top:0;}
+  #description{color:var(--muted); font-size:.85rem; margin-bottom:16px;}
+  #description .tag{
+    display:inline-flex; align-items:center; gap:6px; padding:3px 9px; border-radius:999px;
+    font-size:.75rem; font-weight:700; letter-spacing:.03em; margin-right:6px;
+  }
+  #description .tag.gfs{background:var(--mint-dim); color:var(--mint);}
+  #description .tag.agfs{background:var(--amber-dim); color:var(--amber);}
+
+  .table-wrap{overflow-x:auto;}
+  table{width:100%; border-collapse:collapse;}
+  th,td{padding:12px 12px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap;}
+  th:first-child,td:first-child{text-align:left;}
+  th{
+    color:var(--muted); font-weight:600; font-size:.72rem; text-transform:uppercase; letter-spacing:.06em;
+    position:sticky; top:0; background:var(--surface);
+  }
+  td{font-family:var(--font-mono); font-size:.88rem;}
+  td:first-child{font-family:var(--font-body); font-weight:600; font-size:.9rem;}
+  tr:last-child td{border-bottom:0;}
+  tr:hover td{background:var(--surface-2);}
+  .confirmed{color:var(--gold);}
+
+  tr.flash td{ animation:flashRow 1.6s ease-out; }
+  @keyframes flashRow{
+    0%{background:rgba(216,165,74,.28);}
+    100%{background:transparent;}
+  }
+
+  .rsi-cell{display:flex; flex-direction:column; align-items:flex-end; gap:6px; min-width:96px;}
+  .gauge{position:relative; width:92px; height:6px; border-radius:3px; background:var(--surface-2); border:1px solid var(--line);}
+  .gauge .zone{position:absolute; top:-1px; bottom:-1px; border-radius:3px;}
+  .gauge .zone.gfs{background:var(--mint-dim); box-shadow:inset 0 0 0 1px var(--mint);}
+  .gauge .zone.agfs{background:var(--amber-dim); box-shadow:inset 0 0 0 1px var(--amber);}
+  .gauge .marker{
+    position:absolute; top:50%; width:9px; height:9px; border-radius:50%;
+    background:var(--text); border:2px solid var(--bg); transform:translate(-50%,-50%);
+    box-shadow:0 0 0 1px var(--line);
+  }
+  .gauge .marker.gfs{background:var(--mint);} .gauge .marker.agfs{background:var(--amber);}
+
+  .empty{color:var(--muted); padding:28px 4px 8px; text-align:left;}
+  .empty strong{display:block; color:var(--text); font-family:var(--font-display); font-size:1.05rem; margin-bottom:4px;}
+  #download{margin-top:18px;}
+
+  footer{color:var(--muted); font-size:.78rem; text-align:center; padding:28px 0 8px;}
+
+  @media(max-width:720px){
+    .controls{grid-template-columns:1fr 1fr;}
+    .metrics{grid-template-columns:repeat(2,1fr);}
+    .metric:last-child{grid-column:span 2;}
+    .live-actions{margin-left:0;}
+  }
+  @media(max-width:460px){
+    .controls{grid-template-columns:1fr;}
+    .file-row{flex-direction:column; align-items:stretch;}
+    .file-row input[type=file]{max-width:none;}
+    .file-row button{width:100%;}
+  }
+</style>
+</head>
+<body>
+
+  <div class="ticker-wrap"><div class="ticker" id="tickerTrack"></div></div>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">NSE Scanner &middot; RSI Confluence</p>
+      <h1>Multi-timeframe RSI scanner</h1>
+      <p class="lead">Poll a published Google Sheet CSV (or load a scanner export) and find symbols where daily RSI is pulling back into a trend that weekly and monthly RSI still confirm.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Live data source</h2>
+      <div class="live-row">
+        <span class="live-dot" id="liveDot"></span>
+        <span id="liveText">Not connected yet.</span>
+        <div class="live-actions">
+          <button id="refreshNow" class="secondary" type="button">Refresh now</button>
+          <button id="toggleLive" class="secondary" type="button">Start polling</button>
+        </div>
+      </div>
+      <div class="url-row">
+        <input id="csvUrl" type="url" placeholder="Paste your published Google Sheets CSV URL here" autocomplete="off">
+        <button id="connectUrl" type="button">Connect</button>
+      </div>
+      <div class="url-row">
+        <label style="flex:none; min-width:160px;">Poll every
+          <input id="pollSeconds" type="number" min="30" step="30" value="300" style="font-family:var(--font-mono)">
+          <span style="color:var(--muted); font-size:.78rem;">seconds (min 60 recommended)</span>
+        </label>
+      </div>
+
+      <h2 style="margin-top:22px;">Or load manually</h2>
+      <div class="file-row">
+        <input id="csvFile" type="file" accept=".csv,text/csv" aria-label="Upload scanner export">
+        <button id="sampleButton" class="secondary" type="button">Use sample data</button>
+        <span id="fileStatus">Choose <code>all_scanned_rsi.csv</code>, or try the sample set.</span>
+      </div>
+
+      <h2>Thresholds</h2>
+      <div class="controls">
+        <label>Monthly &amp; weekly RSI must exceed
+          <input id="trend" type="number" min="0" max="100" step="0.5" value="60">
+        </label>
+        <label><span class="zone-swatch gfs"></span>GFS daily RSI range
+          <span class="range-pair"><input id="gfsLow" type="number" min="0" max="100" step="0.5" value="38"><input id="gfsHigh" type="number" min="0" max="100" step="0.5" value="43"></span>
+        </label>
+        <label><span class="zone-swatch agfs"></span>AGFS daily RSI range
+          <span class="range-pair"><input id="agfsLow" type="number" min="0" max="100" step="0.5" value="58"><input id="agfsHigh" type="number" min="0" max="100" step="0.5" value="63"></span>
+        </label>
+      </div>
+    </section>
+
+    <section class="metrics">
+      <div class="metric"><span>Symbols loaded</span><strong id="total">0</strong></div>
+      <div class="metric gfs"><span>GFS matches</span><strong id="gfsCount">0</strong></div>
+      <div class="metric agfs"><span>AGFS matches</span><strong id="agfsCount">0</strong></div>
+      <div class="metric"><span>Latest data date</span><strong id="asOf">&mdash;</strong></div>
+    </section>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-view="gfs" role="tab">GFS<span class="count" id="tabGfsCount">(0)</span></button>
+      <button class="tab" data-view="agfs" role="tab">AGFS<span class="count" id="tabAgfsCount">(0)</span></button>
+      <button class="tab" data-view="all" role="tab">All scanned<span class="count" id="tabAllCount">(0)</span></button>
+    </div>
+
+    <section class="panel results">
+      <div id="description"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Symbol</th><th>LTP</th><th>Daily RSI</th><th>Weekly RSI</th><th>Monthly RSI</th><th>As of</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div id="empty" class="empty">
+        <strong>Nothing loaded yet.</strong>
+        Connect a live CSV URL, load a scanner export, or use the sample data to see matches.
+      </div>
+      <button id="download" type="button" class="secondary" style="display:none">Download displayed rows</button>
+    </section>
+
+    <footer>Filters run entirely in your browser &mdash; nothing you load here leaves this page, except the request to your own CSV URL.</footer>
+  </main>
+
+<script>
+let data = [], view = 'gfs';
+let liveUrl = '';
+let pollTimer = null;
+let polling = false;
+let lastGoodAt = null;
+let prevZones = {}; // symbol -> zone, for flash-on-change
+const ids = ['trend','gfsLow','gfsHigh','agfsLow','agfsHigh'];
+
+const sample = [
+  {Symbol:'RELIANCE',LTP:1421.20,'Daily RSI':40.8,'Weekly RSI':64.1,'Monthly RSI':68.5,'As of':'2026-08-21'},
+  {Symbol:'TCS',LTP:3187.40,'Daily RSI':60.7,'Weekly RSI':66.8,'Monthly RSI':72.6,'As of':'2026-08-21'},
+  {Symbol:'INFY',LTP:1482.30,'Daily RSI':51.2,'Weekly RSI':58.1,'Monthly RSI':63.9,'As of':'2026-08-21'},
+  {Symbol:'HDFCBANK',LTP:1007.50,'Daily RSI':42.5,'Weekly RSI':61.5,'Monthly RSI':64.2,'As of':'2026-08-21'},
+  {Symbol:'ICICIBANK',LTP:1394.10,'Daily RSI':59.4,'Weekly RSI':67.2,'Monthly RSI':70.4,'As of':'2026-08-21'},
+  {Symbol:'HINDUNILVR',LTP:2465.00,'Daily RSI':24.6,'Weekly RSI':47.3,'Monthly RSI':55.9,'As of':'2026-08-21'},
+  {Symbol:'SBIN',LTP:842.75,'Daily RSI':61.9,'Weekly RSI':63.4,'Monthly RSI':66.1,'As of':'2026-08-21'},
+  {Symbol:'BHARTIARTL',LTP:1912.60,'Daily RSI':38.9,'Weekly RSI':65.7,'Monthly RSI':69.8,'As of':'2026-08-21'},
+  {Symbol:'ITC',LTP:468.30,'Daily RSI':33.1,'Weekly RSI':52.0,'Monthly RSI':58.4,'As of':'2026-08-21'},
+  {Symbol:'KOTAKBANK',LTP:1789.90,'Daily RSI':62.4,'Weekly RSI':60.6,'Monthly RSI':61.8,'As of':'2026-08-21'},
+  {Symbol:'LT',LTP:3654.10,'Daily RSI':78.2,'Weekly RSI':71.5,'Monthly RSI':73.0,'As of':'2026-08-21'},
+  {Symbol:'MARUTI',LTP:12840.00,'Daily RSI':41.9,'Weekly RSI':59.8,'Monthly RSI':66.4,'As of':'2026-08-21'}
+];
+
+const val = id => Number(document.getElementById(id).value);
+const number = (row,key) => Number(row[key] ?? row[key.replaceAll(' ','_')] ?? 0);
+function normalise(row){
+  return {
+    Symbol: row.Symbol || row.symbol || '',
+    LTP: number(row,'LTP'),
+    'Daily RSI': number(row,'Daily RSI'),
+    'Weekly RSI': number(row,'Weekly RSI'),
+    'Monthly RSI': number(row,'Monthly RSI'),
+    'As of': row['As of'] || row.AsOf || row.as_of || ''
+  };
+}
+
+function zoneOf(row){
+  const t=val('trend'), gLow=val('gfsLow'),gHigh=val('gfsHigh'),aLow=val('agfsLow'),aHigh=val('agfsHigh');
+  const trendOk = row['Monthly RSI']>t && row['Weekly RSI']>t;
+  const d = row['Daily RSI'];
+  if(trendOk && d>=gLow && d<=gHigh) return 'gfs';
+  if(trendOk && d>=aLow && d<=aHigh) return 'agfs';
+  return 'none';
+}
+
+function filtered(){
+  const t=val('trend'), gLow=val('gfsLow'),gHigh=val('gfsHigh'),aLow=val('agfsLow'),aHigh=val('agfsHigh');
+  const trend=row=>row['Monthly RSI']>t && row['Weekly RSI']>t;
+  const gfs=data.filter(row=>trend(row)&&row['Daily RSI']>=gLow&&row['Daily RSI']<=gHigh).sort((a,b)=>a['Daily RSI']-b['Daily RSI']);
+  const agfs=data.filter(row=>trend(row)&&row['Daily RSI']>=aLow&&row['Daily RSI']<=aHigh).sort((a,b)=>a['Daily RSI']-b['Daily RSI']);
+  const all=[...data].sort((a,b)=>a.Symbol.localeCompare(b.Symbol));
+  return {gfs,agfs,all};
+}
+
+function escapeHtml(value){ const el=document.createElement('div'); el.textContent=value; return el.innerHTML; }
+
+function gaugeHtml(rsiValue, zoneClass){
+  const gLow=val('gfsLow'),gHigh=val('gfsHigh'),aLow=val('agfsLow'),aHigh=val('agfsHigh');
+  const clampPct = v => Math.min(100,Math.max(0,v));
+  const markerClass = zoneClass==='gfs' ? 'marker gfs' : zoneClass==='agfs' ? 'marker agfs' : 'marker';
+  return `<div class="gauge">
+    <div class="zone gfs" style="left:${clampPct(gLow)}%;width:${Math.max(0,gHigh-gLow)}%"></div>
+    <div class="zone agfs" style="left:${clampPct(aLow)}%;width:${Math.max(0,aHigh-aLow)}%"></div>
+    <div class="${markerClass}" style="left:${clampPct(rsiValue)}%"></div>
+  </div>`;
+}
+
+function renderTicker(){
+  const track=document.getElementById('tickerTrack');
+  if(!data.length){
+    track.innerHTML = Array(2).fill(`<span class="item">Connect a live CSV URL, load a scanner export, or use the sample data to populate this ticker.</span>`).join('');
+    return;
+  }
+  const items = data.map(row=>{
+    const z = zoneOf(row);
+    return `<span class="item"><span class="dot ${z}"></span><span class="sym">${escapeHtml(row.Symbol)}</span>RSI ${row['Daily RSI'].toFixed(1)}</span>`;
+  }).join('');
+  track.innerHTML = items + items; // duplicate for seamless loop
+}
+
+function setLiveStatus(state, message){
+  const dot = document.getElementById('liveDot');
+  dot.className = 'live-dot' + (state ? ' ' + state : '');
+  document.getElementById('liveText').innerHTML = message;
+}
+
+function formatAgo(date){
+  if(!date) return '';
+  const secs = Math.round((Date.now() - date.getTime())/1000);
+  if(secs < 60) return `${secs}s ago`;
+  const mins = Math.round(secs/60);
+  return `${mins}m ago`;
+}
+
+function render(){
+  const sets = filtered();
+  const rows = sets[view];
+  document.getElementById('total').textContent = data.length;
+  document.getElementById('gfsCount').textContent = sets.gfs.length;
+  document.getElementById('agfsCount').textContent = sets.agfs.length;
+  document.getElementById('tabGfsCount').textContent = `(${sets.gfs.length})`;
+  document.getElementById('tabAgfsCount').textContent = `(${sets.agfs.length})`;
+  document.getElementById('tabAllCount').textContent = `(${data.length})`;
+  document.getElementById('asOf').textContent = data.map(x=>x['As of']).filter(Boolean).sort().at(-1) || '\u2014';
+
+  const t=val('trend');
+  document.getElementById('description').innerHTML =
+    view==='gfs' ? `<span class="tag gfs">GFS</span>Daily RSI ${val('gfsLow')}\u2013${val('gfsHigh')}, with weekly and monthly RSI both above ${t}.`
+    : view==='agfs' ? `<span class="tag agfs">AGFS</span>Daily RSI ${val('agfsLow')}\u2013${val('agfsHigh')}, with weekly and monthly RSI both above ${t}.`
+    : `Every symbol in the export, sorted alphabetically. GFS and AGFS matches are marked on their gauge.`;
+
+  const newZones = {};
+  document.getElementById('rows').innerHTML = rows.map(r=>{
+    const z = zoneOf(r);
+    newZones[r.Symbol] = z;
+    const wkConfirmed = r['Weekly RSI']>t ? 'confirmed' : '';
+    const moConfirmed = r['Monthly RSI']>t ? 'confirmed' : '';
+    const flash = (prevZones[r.Symbol] !== undefined && prevZones[r.Symbol] !== z) ? ' flash' : '';
+    return `<tr class="${flash.trim()}">
+      <td>${escapeHtml(r.Symbol)}</td>
+      <td>${r.LTP.toFixed(2)}</td>
+      <td><div class="rsi-cell">${r['Daily RSI'].toFixed(2)}${gaugeHtml(r['Daily RSI'], z)}</div></td>
+      <td class="${wkConfirmed}">${r['Weekly RSI'].toFixed(2)}</td>
+      <td class="${moConfirmed}">${r['Monthly RSI'].toFixed(2)}</td>
+      <td>${escapeHtml(r['As of'])}</td>
+    </tr>`;
+  }).join('');
+  prevZones = newZones;
+
+  document.getElementById('empty').style.display = rows.length ? 'none' : 'block';
+  document.getElementById('download').style.display = rows.length ? 'inline-block' : 'none';
+  renderTicker();
+}
+
+/* ---------- CSV parsing (shared by file upload + live fetch) ---------- */
+function parseCsv(line){
+  const out=[]; let value='', quoted=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"' && line[i+1]==='"'){ value+='"'; i++; }
+    else if(c==='"'){ quoted=!quoted; }
+    else if(c===',' && !quoted){ out.push(value.trim()); value=''; }
+    else value+=c;
+  }
+  out.push(value.trim());
+  return out;
+}
+function csvTextToRows(text){
+  const lines = text.trim().split(/\r?\n/);
+  const headers = parseCsv(lines.shift());
+  return lines.map(line=>Object.fromEntries(parseCsv(line).map((value,index)=>[headers[index],value])))
+              .map(normalise).filter(r=>r.Symbol);
+}
+
+/* ---------- manual file upload ---------- */
+document.getElementById('csvFile').addEventListener('change', event=>{
+  const file = event.target.files[0];
+  if(!file) return;
+  stopPolling();
+  const reader = new FileReader();
+  reader.onload = () => {
+    data = csvTextToRows(reader.result);
+    document.getElementById('fileStatus').textContent = `Loaded ${data.length} symbols from ${file.name}.`;
+    setLiveStatus('', 'Showing a manually loaded file, not live data.');
+    render();
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('sampleButton').addEventListener('click', ()=>{
+  stopPolling();
+  data = sample;
+  document.getElementById('fileStatus').textContent = 'Sample data loaded \u2014 replace it with your scanner export or a live URL when ready.';
+  setLiveStatus('', 'Showing sample data, not live data.');
+  render();
+});
+
+/* ---------- live CSV polling ---------- */
+async function fetchLive(isManualRefresh){
+  if(!liveUrl) return;
+  setLiveStatus(polling ? 'on' : '', isManualRefresh ? 'Refreshing\u2026' : 'Polling\u2026');
+  try{
+    // cache-bust so browsers/CDNs don't serve a stale copy of the published CSV
+    const bust = (liveUrl.includes('?') ? '&' : '?') + '_=' + Date.now();
+    const res = await fetch(liveUrl + bust, { cache: 'no-store' });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    const rows = csvTextToRows(text);
+    if(!rows.length) throw new Error('CSV loaded but no valid rows found');
+    data = rows;
+    lastGoodAt = new Date();
+    document.getElementById('fileStatus').textContent = `Live: ${data.length} symbols from published CSV.`;
+    setLiveStatus(polling ? 'on' : '', `Live \u2014 last updated <strong>${formatAgo(lastGoodAt)}</strong>`);
+    render();
+  }catch(err){
+    setLiveStatus('error', `Fetch failed (${escapeHtml(String(err.message||err))}) \u2014 showing last good data from <strong>${lastGoodAt ? formatAgo(lastGoodAt) : 'never'}</strong>.`);
+  }
+}
+
+function startPolling(){
+  const secs = Math.max(30, val('pollSeconds')||300);
+  stopPollingTimerOnly();
+  pollTimer = setInterval(()=>fetchLive(false), secs*1000);
+  polling = true;
+  document.getElementById('toggleLive').textContent = 'Stop polling';
+  fetchLive(false);
+}
+function stopPollingTimerOnly(){
+  if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
+}
+function stopPolling(){
+  stopPollingTimerOnly();
+  polling = false;
+  document.getElementById('toggleLive').textContent = 'Start polling';
+}
+
+document.getElementById('connectUrl').addEventListener('click', ()=>{
+  const url = document.getElementById('csvUrl').value.trim();
+  if(!url){ setLiveStatus('error','Paste a published CSV URL first.'); return; }
+  liveUrl = url;
+  fetchLive(true);
+});
+
+document.getElementById('refreshNow').addEventListener('click', ()=>{
+  if(!liveUrl){
+    const url = document.getElementById('csvUrl').value.trim();
+    if(!url){ setLiveStatus('error','Connect a CSV URL first.'); return; }
+    liveUrl = url;
+  }
+  fetchLive(true);
+});
+
+document.getElementById('toggleLive').addEventListener('click', ()=>{
+  if(!liveUrl){
+    const url = document.getElementById('csvUrl').value.trim();
+    if(!url){ setLiveStatus('error','Connect a CSV URL first.'); return; }
+    liveUrl = url;
+  }
+  if(polling) stopPolling(); else startPolling();
+});
+
+// keep the "last updated Xs ago" text fresh even between polls
+setInterval(()=>{
+  if(lastGoodAt && liveUrl){
+    setLiveStatus(polling ? 'on' : 'stale', `Live \u2014 last updated <strong>${formatAgo(lastGoodAt)}</strong>${polling ? '' : ' (polling paused)'}`);
+  }
+}, 5000);
+
+/* ---------- shared controls ---------- */
+ids.forEach(id=>document.getElementById(id).addEventListener('input', render));
+
+document.querySelectorAll('.tab').forEach(button=>{
+  button.addEventListener('click', ()=>{
+    view = button.dataset.view;
+    document.querySelectorAll('.tab').forEach(tab=>tab.classList.toggle('active', tab===button));
+    render();
+  });
+});
+
+document.getElementById('download').addEventListener('click', ()=>{
+  const rows = filtered()[view];
+  const header = ['Symbol','LTP','Daily RSI','Weekly RSI','Monthly RSI','As of'];
+  const csv = [header, ...rows.map(r=>header.map(h=>r[h]))]
+    .map(row=>row.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  link.download = `${view}_matches.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+});
+
+render();
+</script>
+</body>
+</html>
